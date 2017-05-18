@@ -1,0 +1,1025 @@
+<?php
+
+/**
+ * @FILE Primary module file containing core hooks.
+ */
+
+/*
+ * Implements hook_menu()
+ */
+function subsolar_form_menu() {
+    $items = array();
+    $items['subsolar-form'] = array(
+      'title' => 'Sub Solar Form',
+      'page callback' => 'drupal_get_form',
+      'page arguments' => array('subsolar_form'),
+      'access arguments' => array('access content'),
+      'type' => MENU_NORMAL_ITEM,
+    );
+
+    return $items;
+}
+
+/**
+ * Build the multi-step ajax form.
+ *
+ */
+function subsolar_form($form, &$form_state) {
+
+  drupal_add_library('system','ui.slider');
+
+    // If $form_state['step'] is not set, set it to 1
+    $form_state['step'] = isset($form_state['step']) ? $form_state['step'] : 1;
+
+    $form['#attributes']['class'][] = 'pure-form-stacked';
+
+    // Add a wrapper div for AJAX
+    $form['#prefix'] = '<div id="subsolar_form">';
+    $form['#suffix'] = '</div>';
+
+    //Attach styles and javascript
+    $form['#attached']['css'] = array(
+      drupal_get_path('module', 'subsolar_form') . '/css/subsolar_form.css'
+    );
+
+    $form['#attached']['js'] = array(
+      drupal_get_path('module', 'subsolar_form') . '/js/subsolar_form.js' => array(
+        'type' => 'file',
+      )
+    );
+
+    // we are asked to change step 5 text based on waitlist or not.
+    $waitlist = false;
+
+    //Adds a value to the webform that will show up in exports if waitlist is enabled
+    if(theme_get_setting('waitlist_settings') == 'enabled'){
+        $waitlist = true;
+    }
+
+    // Display different form field groups depending on current step
+    switch($form_state['step'])
+    {
+        // Step 1
+        case 1:
+            /* Production default values */
+            $default_account = '';
+            $default_name = '';
+            /* These default test values can be used for local dev form submission */
+            // $default_account = '94788470001 1';
+            // $default_name = 'BRANT R HARDMAN';
+
+            //Set account value if it's already been entered
+            if(isset($form_state['values']['step_1']['account_number']))
+            {
+                $default_account = $form_state['values']['step_1']['account_number'];
+            }
+            elseif(isset($form_state['storage']['step_1']['account_number']))
+            {
+                $default_account = $form_state['storage']['step_1']['account_number'];
+            }
+
+            //Set customer name if it's already been entered
+            if(isset($form_state['values']['step_1']['customer_name']))
+            {
+                $default_name = $form_state['values']['step_1']['customer_name'];
+            }
+            elseif(isset($form_state['storage']['step_1']['customer_name']))
+            {
+                $default_name = $form_state['storage']['step_1']['customer_name'];
+            }
+
+
+            $form['step_1'] = array(
+              '#type' => 'fieldset',
+              '#title' => t('Get ready to go solar'),
+              '#weight' => 0,
+              '#collapsible' => FALSE,
+              '#tree' => TRUE,
+              '#attributes' => array(
+                'class' =>  array('cl-u1'),
+              ),
+            );
+
+            $form['step_1']['intro'] = array(
+              '#markup' => "<p>You will need your account number to begin your reservation request. Here’s where to <a href='/account-example'>find it on your bill.</a> If you don’t have your account number, you can reserve your solar blocks by calling Rocky Mountain Power at 1-844-813-3971, 24 hours per day. You can still estimate your solar usage without your account number by entering your average monthly energy bill costs into our <a href='/subsolar-seasonal-form'>seasonal calculator</a>. </p><div id='no-account'>
+                    <div class='no-account-container'><span>Don't have your account number?</span><br /><a href='/subsolar-seasonal-form'>Estimate your solar usage with our seasonal calculator.</a></div>"
+            );
+
+            $form['step_1']['account_number'] = array(
+              '#type' => 'textfield',
+              '#title' => t('Rocky Mountain Power Account Number'),
+              '#description' => t('(Format: XXXXXXXX-XXX X Please enter all numbers, including zeros)'),
+              '#required' => TRUE,
+              '#default_value' => $default_account,
+              '#attributes' => array(
+                'id' => 'res-account-number',
+              )
+            );
+
+            $form['step_1']['customer_name'] = array(
+              '#type' => 'textfield',
+              '#title' => t('Contact Name'),
+              '#description' => t('Enter your full name exactly as it appears on your bill'),
+              '#required' => TRUE,
+              '#default_value' => $default_name,
+              '#attributes' => array(
+                'id' => 'res-contact-name',
+              )
+            );
+
+
+            break;
+
+        // Step 2
+        case 2:
+
+            $default_address = '';
+            //Set address value if it's already been entered
+            if(isset($form_state['values']['step_2']['address']))
+            {
+                $default_address = $form_state['values']['step_2']['address'];
+            }
+            elseif(isset($form_state['storage']['step_2']['address']))
+            {
+                $default_address = $form_state['storage']['step_2']['address'];
+            }
+
+            $form['step_2'] = array(
+              '#type' => 'fieldset',
+              '#title' => t('Choose your service address'),
+              '#weight' => 0,
+              '#collapsible' => FALSE,
+              '#tree' => TRUE,
+              '#attributes' => array(
+                'class' =>  array('cl-u1'),
+              ),
+            );
+
+            $form['step_2']['address'] = array(
+              '#type' => 'radios',
+              '#title' => t('Select an address to enroll in Subscriber Solar.'),
+              '#options' => $form_state['storage']['address_options'],
+              '#required' => TRUE,
+              '#default_value' => $default_address,
+              '#ajax' => array(
+                'callback' => 'address_select_ajax_form_callback',
+                'event' => 'change',
+              ),
+            );
+
+            $form['step_2']['processed-billing-data'] = array
+            (
+              '#type' => 'hidden',
+              '#default_value' =>  isset($form_state['storage']['step_2']['processed-billing-data']) ? $form_state['storage']['step_2']['processed-billing-data'] : $form_state['values']['step_2']['processed-billing-data'],
+              '#attributes' => array(
+                'class' => array('processed-billing-data'),
+              )
+            );
+
+            $form['step_2']['rec_blocks'] = array
+            (
+              '#type' => 'hidden',
+              '#default_value' => $_SESSION['rec_blocks'],
+              '#attributes' => array(
+                'class' => array('recommend-block'),
+              )
+            );
+
+            break;
+
+        // Step 3
+        case 3:
+
+            $default_reserved = '';
+            if(isset($form_state['values']['step_3']['blocks_reserved']))
+            {
+                $default_reserved = $form_state['values']['step_3']['blocks_reserved'];
+            }
+            elseif(isset($form_state['storage']['step_3']['blocks_reserved']))
+            {
+                $default_reserved = $form_state['storage']['step_3']['blocks_reserved'];
+            }
+
+            $default_blocks = '';
+            if(isset($form_state['values']['step_3']['block_slider']))
+            {
+                $default_blocks = $form_state['values']['step_3']['block_slider'];
+            }
+            elseif(isset($form_state['storage']['step_3']['block_slider']))
+            {
+                $default_blocks = $form_state['storage']['step_3']['block_slider'];
+            }
+
+
+
+            $form['step_3'] = array(
+              '#type' => 'fieldset',
+              '#title' => t('Calculate your solar potential'),
+              '#weight' => 0,
+              '#collapsible' => FALSE,
+              '#tree' => TRUE,
+              '#attributes' => array(
+                'class' =>  array('cl-u1'),
+              ),
+            );
+
+
+            $form['step_3']['intro'] = array(
+              '#markup' => "<p>Based on your average usage at ". $_SESSION['address'] .", we recommend starting with <b>[". $_SESSION['rec_blocks']."]</b> solar blocks to maximize your energy potential. The maximum amount of blocks you can apply for based on your usage, is <b>[". $_SESSION['max_blocks']."]</b>. Use the slider to adjust your
+    solar block level and see how using more or less solar can affect your annual energy costs and environmental impact.</p>"
+            );
+
+            $form['step_3']['blocks'] = array(
+              '#type' => 'item',
+              '#title' => t(''),
+              '#markup' => '
+
+                        <div class="full-container cl-u1 cl-uxl-1 pure-g">
+                            <div class="calculate-block cl-u1 cl-ularge-1-2">
+                                <div class="circle">
+                                    <input type="number" id="slideBlocks" value="" onfocus="this.blur()" readonly />
+                                </div>
+                                <div class="calculate-right-content">
+                                    <h3>Solar Blocks</h3>
+                                    <p>We recommend <b>['. $_SESSION["rec_blocks"].']</b> blocks to match your current usage. </p>
+                                </div>
+                            </div><div class="calculate-block cl-u1 cl-ularge-1-2">
+                                <div class="circle">
+                                    <input type="text" id="monthlyBill" value="" onfocus="this.blur()" readonly />
+                                </div>
+                                <div class="calculate-right-content">
+                                    <h3>Average Monthly Bill Difference </h3>
+                                    <p>See the full table below to compare your monthly energy costs with and without solar.</p>
+                                </div>
+                            </div>
+                        </div>',
+            );
+
+            $form['step_3']['block_slider'] = array(
+
+              '#type' => 'rangefield',
+              '#min' => 1,
+              '#max' => $_SESSION['max_blocks'],
+              '#step' => 1,
+              '#default_value' => $default_blocks,
+              '#prefix' => "<div class='range-holder'>",
+              '#suffix' => "</div>",
+              '#attributes' => array(
+                'class' =>  array('block-slider'),
+              ),
+              '#ajax' => array(
+                'callback' => 'block_slider_change_ajax_form_callback',
+                'event' => 'change',
+              ),
+            );
+
+            // Custom Slider that will populate form range value above.
+          $form['step_3']['block_slider_custom'] = array(
+            '#markup' => "<div id='customSliderBox'><div class='slider'></div></div>",
+          );
+
+            $form['step_3']['blocks_2'] = array(
+              '#type' => 'item',
+              '#title' => t(''),
+              '#markup' => '
+                        <div class="full-container cl-u1 cl-uxl-1 pure-g">
+                            <div class="calculate-block cl-u1 cl-ularge-1-3">
+                                <div class="calculate-content-block">
+                                    <div class="calculate-content-block-header">
+                                        <input type="number" id="milesNotDriven" value="" onfocus="this.blur()" readonly />
+                                        <img src="sites/default/files/icons/car-icon.png" alt="Car" class="miles-not" />
+                                        <h3>Miles not driven</h3>
+                                    </div>
+                                    <hr />
+                                    <p>Choosing Subscriber Solar is equivalent to driving fewer miles</p>
+                                </div>
+                            </div><div class="calculate-block cl-u1 cl-ularge-1-3">
+                                <div class="calculate-content-block">
+                                    <div class="calculate-content-block-header">
+                                        <input type="number" id="treesPlanted" value="" onfocus="this.blur()" readonly />
+                                        <img src="sites/default/files/icons/tree-icon.png" alt="Tree" />
+                                        <h3>Trees Planted </h3>
+                                    </div>
+                                    <hr />
+                                    <p>Purchasing energy from Subscriber Solar is equivalent to putting more trees on the earth</p>
+                                </div>
+                            </div><div class="calculate-block cl-u1 cl-ularge-1-3">
+                                <div class="calculate-content-block">
+                                    <div class="calculate-content-block-header">
+                                        <input type="number" id="co2Saved" value="" onfocus="this.blur()" readonly />
+                                        <img src="sites/default/files/icons/co2-icon.png" alt="C02" class="tons-saved" />
+                                        <h3>Tons of CO<sub>2</sub> Saved </h3>
+                                    </div>
+                                    <hr />
+                                    <p>Choosing Subscriber Solar prevents more CO2 from entering the atmosphere</p>
+                                </div>
+                            </div>
+                        </div>
+                       <p class="calculation-source">Based on the U.S. Environmental Protection Agency Greenhouse Gas Equivalencies Calculator for the average customer living in the western region.</p>
+
+                        <hr />',
+            );
+
+            // programmatically create the table, this willbe the first instance when the subsolor-form loads
+            $header = array(
+              'accounting_period' => t('Date'),
+              'kwh_usage' => t('kWh Used'),
+              'without_solar' => t('Without Solar'),
+              'with_solar' => t('With Solar'),
+              'monthlyDifference' => t('Difference'),
+              'blankBlueTitle' => t(' ')
+            );
+
+            $form['step_3']['usage'] = array
+            (
+              '#theme' => 'table',
+              '#header' => $header,
+              '#rows' => $form_state['storage']['usage_table_data'],
+              '#empty' => t('No usage data found.'),
+              '#attributes' => array(
+                'class' => array('pure-table','pure-table-striped', 'table-custom', 'usage-table'),
+              ),
+              '#prefix' => "
+                                <h1>Compare your energy usage</h1>
+                                <p>Based on your energy usage at this location for the past 12 months, we've estimated the difference in your energy costs without and with solar energy.</p>
+                             ",
+              '#suffix' => "<p class='calculation-source'>Recommended number of blocks is based upon lowest month usage. Increasing blocks will result in banked energy that may be used in later months.</p><hr>",
+            );
+            if($waitlist == false) {
+                $form['step_3']['blocks_reserved'] = array
+                (
+                  '#type' => 'textfield',
+                  '#title' => t("I'm applying for <div id='reserved-blocks'></div> solar block(s) at @address", array(
+                      '@reserved' => $default_reserved,
+                      '@address' => $_SESSION['address'])
+                  ),
+                  '#required' => TRUE,
+                  '#default_value' => $default_reserved,
+                  '#prefix' => '<h1>Ready to reserve?</h1>
+                <p>Enter the number of solar blocks you would like to apply for below. If you are still not sure how many
+                solar blocks you would like to apply for, you can contact Rocky Mountain Power for assistance at 1-844-813-3971.
+                Our customer service lines are open 24 hours per day, seven days a week. Customer subscriptions can be cancelled after 3 years with no fee; cancellations prior to 3 years will be charged $50 per block.</p>',
+
+                  '#attributes' => array(
+                    'class' => array('slideBlocks'),
+                    'maxlength' => 4,
+                    'size' => 4
+                  ),
+                );
+            } else {
+                $form['step_3']['blocks_reserved'] = array
+                (
+                  '#type' => 'textfield',
+                  '#title' => t("I'm applying for <div id='reserved-blocks'></div> solar block(s) at @address", array(
+                      '@reserved' => $default_reserved,
+                      '@address' => $_SESSION['address'])
+                  ),
+                  '#required' => TRUE,
+                  '#default_value' => $default_reserved,
+                  '#prefix' => '<h1>Get on the waitlist</h1>
+                <p>Enter the number of solar blocks you would like to apply for below. If you are still not sure how many
+                solar blocks you would like to apply for, you can contact Rocky Mountain Power for assistance at 1-844-813-3971.
+                Our customer service lines are open 24 hours per day, seven days a week. Customer subscriptions can be cancelled after 3 years with no fee; cancellations prior to 3 years will be charged $50 per block.</p>',
+
+                  '#attributes' => array(
+                    'class' => array('slideBlocks'),
+                    'maxlength' => 4,
+                    'size' => 4
+                  ),
+                );
+            }
+
+            break;
+
+        case 4:
+
+            $default_phone = '';
+            $default_alt = '';
+            $default_email = '';
+            $default_refer = '';
+
+            //Set phone number if it's already been entered
+            if(isset($form_state['values']['step_4']['phone_number']))
+            {
+                $default_phone = $form_state['values']['step_4']['phone_number'];
+            }
+            elseif(isset($form_state['storage']['step_4']['phone_number']))
+            {
+                $default_phone = $form_state['storage']['step_4']['phone_number'];
+            }
+
+            //Set alt phone number if it's already been entered
+            if(isset($form_state['values']['step_4']['alt_phone_number']))
+            {
+                $default_alt = $form_state['values']['step_4']['alt_phone_number'];
+            }
+            elseif(isset($form_state['storage']['step_4']['alt_phone_number']))
+            {
+                $default_alt = $form_state['storage']['step_4']['alt_phone_number'];
+            }
+
+            //Set email if it's already been entered
+            if(isset($form_state['values']['step_4']['email_address']))
+            {
+                $default_email = $form_state['values']['step_4']['email_address'];
+            }
+            elseif(isset($form_state['storage']['step_4']['email_address']))
+            {
+                $default_email = $form_state['storage']['step_4']['email_address'];
+            }
+
+
+            //Set refer if it's already been entered
+            if(isset($form_state['values']['step_4']['refer']))
+            {
+                $default_refer = $form_state['values']['step_4']['refer'];
+            }
+            elseif(isset($form_state['storage']['step_4']['refer']))
+            {
+                $default_refer = $form_state['storage']['step_4']['refer'];
+            }
+
+
+            $form['step_4'] = array(
+              '#type' => 'fieldset',
+              '#title' => t('Provide your contact information'),
+              '#weight' => 0,
+              '#collapsible' => FALSE,
+              '#tree' => TRUE,
+            );
+            $form['step_4']['phone_number'] = array(
+              '#type' => 'telfield',
+              '#title' => t('Phone Number'),
+              '#required' => TRUE,
+              '#default_value' => $default_phone,
+            );
+
+            $form['step_4']['alt_phone_number'] = array(
+              '#type' => 'telfield',
+              '#title' => t('Alternate Phone Number (optional)'),
+              '#required' => FALSE,
+              '#default_value' => $default_alt,
+            );
+
+            $form['step_4']['email_address'] = array(
+              '#type' => 'emailfield',
+              '#title' => t('Email Address'),
+              '#required' => TRUE,
+              '#default_value' => $default_email,
+            );
+
+            $form['step_4']['refer'] = array(
+              '#type' => 'radios',
+              '#title' => t('Where did you hear about the Subscriber Solar program?'),
+              '#required' => FALSE,
+              '#default_value' => $default_refer,
+              '#options' => array(
+                'rocky_mountain_rep' => t('Rocky Mountain Power Representative'),
+                'event' => t('Event'),
+                'website' => t('Website'),
+                'radio' => t('Radio'),
+                'brochure' => t('Brochure'),
+                'newsletter_email' => t('Newsletter/Email'),
+                'news_story' => t('News story'),
+                'facebook_twitter' => t('Facebook/Twitter'),
+                'family_friend' => t('Family or friend'),
+                'other' => 'Other'
+              )
+            );
+
+
+            break;
+
+        case 5:
+            // CLR wants the step 5 to have the subhead be based on waitlist or not - CLEAR-174
+            if($waitlist == false) {
+                $form['step_5'] = array(
+                  '#type' => 'fieldset',
+                  '#title' => t('Review and submit your reservation request'),
+                  '#weight' => 0,
+                  '#collapsible' => FALSE,
+                  '#tree' => TRUE,
+                );
+            } else {
+                $form['step_5'] = array(
+                  '#type' => 'fieldset',
+                  '#title' => t('Review and submit your waitlist request'),
+                  '#weight' => 0,
+                  '#collapsible' => FALSE,
+                  '#tree' => TRUE,
+                );
+            }
+
+            $form['step_5']['contact_name'] = array(
+              '#type' => 'item',
+              '#title' => t('Contact Name'),
+              '#markup' => $form_state['storage']['step_1']['customer_name'],
+            );
+
+            $form['step_5']['edit'] = array(
+              '#type' => 'submit',
+              '#value' => t('Edit'),
+              '#attributes' => array('class' => array('contact-edit')),
+              '#limit_validation_errors' => array(),
+              '#submit' => array('subsolar_form_edit_contact_submit'),
+              '#ajax' => array(
+                'wrapper' => 'subsolar_form',
+                'callback' => 'subsolar_form_ajax_callback',
+              ),
+            );
+
+            $form['step_5']['contact_information'] = array(
+              '#type' => 'item',
+              '#title' => t('Contact Information'),
+              '#markup' => '<div><p class=\'phone-one\'>'.$form_state['storage']['step_4']['phone_number'].'</p><p class=\'phone-two\'>'.$form_state['storage']['step_4']['alt_phone_number'].'</p><p class=\'email-addy\'>'.$form_state['storage']['step_4']['email_address'].'</p></div>',
+            );
+
+            $form['step_5']['service_address'] = array(
+              '#type' => 'item',
+              '#title' => t('Service Address(s)'),
+              '#markup' => $_SESSION['address'] ,
+            );
+
+            $form['step_5']['request_status'] = array(
+              '#type' => 'item',
+              '#title' => t('Request Status'),
+              '#markup' => $form_state['storage']['step_3']['blocks_reserved'] . ' Block(s)',
+            );
+
+            break;
+    } //end switch
+
+
+
+    //Container for forward and back buttons
+    $form['buttons'] = array(
+      '#type' => 'container',
+    );
+
+    //Checks to make sure we're not on step 1 as first step doesn't need a back button.
+    if($form_state['step'] !== 1) {
+        $form['buttons']['back'] = array(
+          '#type' => 'submit',
+          '#value' => t('Back'),
+          '#attributes' => array('class' => array('pure-button', 'button-custom')),
+          '#limit_validation_errors' => array(),
+          '#submit' => array('subsolar_form_back_submit'),
+          '#ajax' => array(
+            'wrapper' => 'subsolar_form',
+            'callback' => 'subsolar_form_ajax_callback',
+          ),
+        );
+    }
+
+    //Checks to make sure we're not on the last step of the form before showing the forward button
+    if($form_state['step'] !== 5) {
+        $form['buttons']['forward'] = array(
+          '#type' => 'submit',
+          '#value' => t('Next'),
+          '#attributes' => array('class' => array('pure-button', 'button-custom')),
+          '#ajax' => array(
+            'wrapper' => 'subsolar_form',
+            'callback' => 'subsolar_form_ajax_callback',
+          ),
+        );
+    }
+
+    //Show a submit button if we're on the last step of the form
+    else {
+        $form['buttons']['submit'] = array(
+          '#type' => 'submit',
+          '#value' => t('Submit'),
+          '#attributes' => array('class' => array('pure-button', 'button-custom')),
+          '#submit' => array('subsolar_form_finish_submit'),
+        );
+
+    }
+
+    return $form;
+}
+
+/**
+ * Basic form validation, currently checks if account number and name fields contain invalid characters.
+ *
+ */
+function subsolar_form_validate($form, $form_state) {
+
+    switch ($form_state['step']) {
+        case "1":
+            // Check that account number only contains numbers and dashes
+            if(preg_match('^([0-9]+-)*[0-9]+$', $form_state['values']['step_1']['account_number'])) {
+                form_set_error('step_1', t('Your account number should only contain numbers.'));
+            }
+
+            // Check that this is a name
+            $nameSafety = "/^\pL[\pL .'-]*\z/";
+
+            if(!preg_match($nameSafety, $form_state['values']['step_1']['customer_name'])) {
+                form_set_error('step_2', t('There seems to be an invalid character in your name. Please check it and try again.'));
+            }
+
+            break;
+    }
+
+}
+
+//Some addresses have hashtags so this is a helper function to strip them
+function remove_hashtags($string){
+    return str_replace('#', '',
+      preg_replace('/(?:#[\w-]+\s*)+$/', '', $string));
+}
+
+//Helper function to process names
+function clean_name($string){
+    $clean_string = strtolower(check_plain(preg_replace('/\s\s+/', ' ',$string)));
+    $name = preg_split("/[\s,]+/", $clean_string);
+    $name_clean = implode("*", $name);
+    return $name_clean;
+}
+
+//Helper function to set sessions
+function _subsolar_form_session($key, $value = null) {
+    if (isset($value)) {
+        unset($_SESSION[$key]);
+        $_SESSION[$key] = $value;
+    }
+
+    if (isset($_SESSION[$key])) {
+        return $_SESSION[$key];
+    }
+}
+
+//helper function to clear sessions
+function _subsolar_form_clear_session($key) {
+    if (isset($_SESSION[$key])) {
+        unset($_SESSION[$key]);
+    }
+}
+
+//Helper function to save and sort processed usage and billing data
+function process_usage_data($datafield){
+    //Clear all previous sessions
+    _subsolar_form_clear_session('processed_data');
+    _subsolar_form_clear_session('sorted_data');
+
+    //Save processed data to the session
+    _subsolar_form_session('processed_data', $datafield);
+
+    //Clean it up
+    $cleaned_data = html_entity_decode($_SESSION['processed_data']);
+    $processed_usage_data = drupal_json_decode($cleaned_data);
+
+    //Sort by date ascending
+//    foreach ($processed_usage_data as $key => $part) {
+//        $sort[$key] = strtotime($part['accounting_period']);
+//    }
+//    array_multisort($sort, SORT_ASC, $processed_usage_data);
+
+
+    //Save sorted data in session
+    _subsolar_form_session('sorted_data', $processed_usage_data);
+
+    //return sorted data
+    return $processed_usage_data;
+}
+
+//Helper function to get recommended blocks
+function get_recommended_blocks($usage_array){
+    $min_usage = min($usage_array);
+    $recommended_blocks = floor($min_usage/200);
+    if($recommended_blocks <= 0){
+        $recommended_blocks = 1;
+    }
+
+    return $recommended_blocks;
+}
+
+//Helper function to get maximum blocks_reserved
+function get_max_blocks($usage_array){
+    $average_usage = array_sum($usage_array) / count($usage_array);
+    $max_blocks = floor($average_usage / 200);
+
+    if($max_blocks <= 1){
+        $max_blocks = 1;
+    }
+
+    return $max_blocks;
+}
+
+// Sets drupal_mail params and headers to message array
+function subsolar_form_mail($key, &$message, $params) {
+    $message['subject'] = $params['subject'];
+    $message['body'][] = $params['body'];
+    $headers = array(
+      'MIME-Version' => '1.0',
+      'Content-Type' => 'text/html; charset=UTF-8; format=flowed',
+      'Content-Transfer-Encoding' => '8Bit',
+      'X-Mailer' => 'Drupal'
+    );
+    foreach ($headers as $key => $value) {
+        $message['headers'][$key] = $value;
+    }
+}
+
+//General on submit function for form
+function subsolar_form_submit($form, &$form_state) {
+
+    //get current form step
+    $step = $form_state['step'];
+
+    //Save to form storage so form values persist between steps
+    $form_state['storage']['step_'. $step] = $form_state['values']['step_'. $step];
+
+    //Pause at step 1 to check for account data
+    if($step == 1) {
+        $account_no = str_replace('-', '',$form_state['values']['step_1']['account_number']);
+
+        if (strlen($account_no) == 13) {
+            $cust_id = substr($account_no,0,8); //to site_id
+            $cust_acct_seq = ltrim(substr($account_no,8,3), '0');
+            $cust_agree_seq = ltrim(substr($account_no,11,1), '0'); //to p_agreement
+
+            $search_single_address = 'http://prod.clear-result.tngdev.com:8983/solr/clearesults_shard1_replica1/select?q=Customer_ID%3A+'.$cust_id.'+AND+Customer_Account_Sequence%3A'.$cust_acct_seq.'+AND+Customer_Agreement_Sequence%3A'.'*'.'&sort=P_Accounting_Period_Per+asc&start=0&rows=2147483647&fl=Site_ID%2C+Service_Location_Seq%2C+KWH_Usage%2C+P_Accounting_Period_Per%2C+Name%2C+Site_Address_Line_1%2C+Site_City%2C+Site_State%2C+Site_Zip&wt=json&indent=true&omitHeader=true';
+            $search = 'http://prod.clear-result.tngdev.com:8983/solr/clearesults_shard1_replica1/select?q=Customer_ID%3A+'.$cust_id.'&sort=Site_ID+asc,P_Accounting_Period_Per+asc&start=0&rows=2147483647&fl=Site_ID%2C+Service_Location_Seq%2C+KWH_Usage%2C+P_Accounting_Period_Per%2C+Name%2C+Site_Address_Line_1%2C+Site_City%2C+Site_State%2C+Site_Zip%2C+Customer_Account_Sequence%2C+Customer_Agreement_Sequence&wt=json&indent=true&omitHeader=true';
+
+            $result = drupal_http_request($search);
+            $account_info = drupal_json_decode($result->data);
+
+
+            $records_returned = $account_info['response']['numFound'];
+            $user_data = $account_info['response']['docs'];
+            $usage_data_by_addr = array();
+            $address_options = array();
+
+            //If we find something, auto-populate address radio select options and save usage data for each address found in one array
+            if($records_returned != 0) {
+
+                if(clean_name($form_state['values']['step_1']['customer_name'])  == clean_name($user_data[0]['Name'][0])){
+                    //Loop through usage data in query results and save it to use in javascript
+                    $i = 0;
+
+                    foreach($user_data as $u) {
+                        //Get Account sequence
+                        $acct_seq = $user_data[$i]['Customer_Account_Sequence'];
+                        $agree_seq = $user_data[$i]['Customer_Agreement_Sequence'];
+                        $site_loc = preg_replace("/\s+/", " ", remove_hashtags($user_data[$i]['Site_Address_Line_1'][0]) .' '. $user_data[$i]['Site_City'][0] .', '.$user_data[$i]['Site_State'][0].' '.$user_data[$i]['Site_Zip'][0]);
+                        $site_address_line_1 = remove_hashtags($user_data[$i]['Site_Address_Line_1'][0]);
+
+                        $billMonth = date($user_data[$i]['P_Accounting_Period_Per']);
+                        $curYear = date('Y');
+
+                        $monthYear =  date("F", mktime(0, 0, 0, $billMonth, 1, $curYear));
+
+                        $usage_data_by_addr[$site_address_line_1][] = array(
+                          'site_address_line_1' => $site_address_line_1,
+                          'acct_seq' => $acct_seq,
+                          'agree_seq' => $agree_seq,
+                          'user_address' => $site_loc,
+                          'accounting_period' => $monthYear,
+                          'kwh_usage' => $user_data[$i]['KWH_Usage'],
+                          'site_id' => $user_data[$i]['Site_ID'],
+                          'service_location_seq' => $user_data[$i]['Service_Location_Seq'],
+                        );
+                        $i++;
+                    }
+
+                    //Create the options for the address selection on step 2. Key is site_address_line_1, value is address.
+                    //usage data to send to calculator is chosen based on key of value
+                    foreach($usage_data_by_addr as $addr){
+                        if(!empty($addr[0]['site_address_line_1'])){
+                            $address_options[$addr[0]['site_address_line_1']] = t($addr[0]['user_address']);
+                        }
+                    }
+
+
+                    //Save the properly formatted account number
+                    $form_state['storage']['account_number'] = $account_no;
+
+                    //Send the address options to the address radio select on step 2
+                    $form_state['storage']['address_options'] = $address_options;
+
+
+                    //Save the unprocessed usage data (for all addresses) cuz we need it
+                    _subsolar_form_session('raw_data', $usage_data_by_addr);
+
+
+                    //Move the form forward one step
+                    $form_state['step']++;
+                } else {
+                    //no solr match
+                    drupal_set_message(t("Sorry, we can't find an account with this information. Please double check your name and account number entries and try again"));
+                }
+            } else {
+                //no records returned for this customer name and account number combination
+                drupal_set_message(t("Sorry, we can't find an account matching that information. Please double check your entries and try again"));
+            }
+
+        } else {
+            //account number is the wrong number of characters
+            drupal_set_message(t("Your account number should have 13 digits, please supply a valid account number."));
+        }
+
+    }
+    //usage data back from javascript and all processed with billing info. save to form storage so we can use it whenevs
+    elseif(isset($form_state['values']['step_2']['processed-billing-data'])) {
+
+        //stay on step 2 if no processed billing data is found, as would be the case if less than 12 months of data are returned from solr query
+        //Displays message with link to seasonal form from line 901 below
+        if($form_state['values']['step_2']['processed-billing-data'] == null){
+            $form_state['step'] = 2;
+        } else {
+            //Save to form storage so value persists
+            $form_state['storage']['step_2']['processed-billing-data'] = $form_state['values']['step_2']['processed-billing-data'];
+            $form_state['storage']['usage_table_data'] = process_usage_data($form_state['storage']['step_2']['processed-billing-data']);
+
+            // Increase the step by one, to move on to the next step
+            $form_state['step']++;
+        }
+    }
+
+    // Check to see if the next/forward button was clicked
+    elseif(isset($form_state['values']['forward']) && $form_state['values']['op'] == $form_state['values']['forward']) {
+        // Increase the step by one, to move on to the next step
+        $form_state['step']++;
+    }
+
+    $form_state['rebuild'] = TRUE;
+}
+
+/**
+ * On submit function  form back button
+ */
+function subsolar_form_back_submit($form, &$form_state) {
+    //reduce step by one
+    $form_state['step']--;
+    $form_state['rebuild'] = TRUE;
+}
+
+/**
+ * On submit function for last step of form
+ */
+function subsolar_form_finish_submit($form, &$form_state){
+
+    //store waitlist value
+    $waitlist = false;
+
+    //Adds a value to the webform that will show up in exports if waitlist is enabled
+    if(theme_get_setting('waitlist_settings') == 'enabled'){
+        $waitlist = true;
+    }
+
+    //create a new solar sign up entity
+    $new_signup = entity_create('res_solar_signup', array());
+    $new_signup->customer_name = t($form_state['storage']['step_1']['customer_name']);
+    $new_signup->account_number = t($form_state['storage']['account_number']);
+    $new_signup->phone_number = t($form_state['storage']['step_4']['phone_number']);
+    $new_signup->alt_phone_number = t($form_state['storage']['step_4']['alt_phone_number']);
+    $new_signup->email = t($form_state['storage']['step_4']['email_address']);
+    $new_signup->street_address = t($_SESSION['address']);
+    $new_signup->request_status = $form_state['storage']['step_3']['blocks_reserved'];
+    $new_signup->field_site_id['und'][0]['value'] = $_SESSION['site_id'];
+    $new_signup->field_service_location_sequence['und'][0]['value'] = $_SESSION['service_location_seq'];
+    $new_signup->field_refer['und'][0]['value'] = $form_state['storage']['step_4']['refer'];
+
+    $clearesult_settings = variable_get('theme_clearesult_subsolar_settings', array());
+    if($clearesult_settings['waitlist_settings'] == 'enabled'){
+        $new_signup->field_waitlist_enabled['und'][0]['value'] = t('On Waitlist');;
+    }
+    //Save it in the DB
+    $new_signup->save();
+
+    //Send a confirmation email
+    $module = 'subsolar_form';
+    $key = 'res_subsolar_form';
+    $email = $form_state['storage']['step_4']['email_address'];
+    if($waitlist == false) {
+        $email_subject = 'Subscriber Solar reservation request received';
+        $email_body = '<h2>Thank you!</h2><p>You’ve successfully submitted your reservation request to the Rocky Mountain Power Subscriber Solar program. You will be notified when your reservation has been confirmed.</p><p>Thank you again for your interest in the Subscriber Solar program!</p>';
+    } else {
+        $email_subject = 'Subscriber Solar waitlist confirmation';
+        $email_body = '<h2>Thank you!</h2><p>Thank you for your interest in the Rocky Mountain Power Subscriber Solar program. While the program is currently full, we have received your reservation request and added you to our waitlist. We will contact you when blocks are available.</p><p>Thank you again for your interest in the Subscriber Solar program!</p>';
+    }
+
+    $language = language_default();
+    $params = array(
+      'subject' => $email_subject,
+      'body' => $email_body,
+    );
+  // by default swift mail wasn't applying the site name formatted email, we adjust it here.
+    $site_name = variable_get('site_name', NULL);
+    $from = $site_name . "<" . variable_get('site_mail', NULL) . ">";
+    $send = TRUE;
+    $message = drupal_mail($module, $key, $email, $language, $params, $from, $send);
+
+    if ($message['result'] == TRUE) {
+        //The form has been completed, take them to the confirmation page and clear form storage
+        $form_state['storage'] = array();
+
+        if($waitlist == false) {
+            drupal_goto('residential-confirmation');
+        } else {
+            drupal_goto('waitlist-confirmation');
+        }
+    }
+    else {
+        drupal_set_message(t('There was a problem sending your message and it was not sent.'), 'error');
+    }
+
+}
+
+function subsolar_form_edit_contact_submit($form, &$form_state) {
+    // Back to contact
+    $form_state['step'] = 4;
+    $form_state['rebuild'] = TRUE;
+}
+
+
+//AJAX form callback function
+function subsolar_form_ajax_callback($form, $form_state) {
+    return $form;
+}
+
+//AJAX for address selection on step 2
+function address_select_ajax_form_callback($form, $form_state) {
+
+    //store waitlist value
+    $waitlist = false;
+
+    //Adds a value to the webform that will show up in exports if waitlist is enabled
+    if(theme_get_setting('waitlist_settings') == 'enabled'){
+        $waitlist = true;
+    }
+
+    $all_kwh_usage = array();
+    $usage_data_by_addr = $_SESSION['raw_data'];
+    $site_address_line_1 = $form_state['values']['step_2']['address'];
+
+    //Get the site_address_line_1 of the selected address
+    $usage_data = $usage_data_by_addr[$site_address_line_1];
+
+    if(count($usage_data) < 12)
+    {
+        if($waitlist == false) {
+            drupal_set_message(t('<p><b>Oops! There wasn\'t enough information.</b></p>
+<p>We were unable to calculate 12 months of previous energy usage for the selected address attached to your account. To reserve your Subscriber Solar blocks, you can call Rocky Mountain Power at 1-844-813-3971, 24 hours per day. You can still calculate your potential solar usage by using our seasonal calculator <a href="!url">here</a>.</p>', array('!url' => url('/subsolar-seasonal-form'))));
+        } else {
+            drupal_set_message(t('<p><b>Oops! There wasn\'t enough information.</b></p>
+<p>We were unable to calculate 12 months of previous energy usage for the selected address attached to your account. To get on the waitlist, you can call Rocky Mountain Power at 1-844-813-3971, 24 hours per day. You can still calculate your potential solar usage by using our seasonal calculator here.</p>', array('!url' => url('/subsolar-seasonal-form'))));
+        }
+    } else {
+
+        _subsolar_form_session('data_by_adr', $usage_data);
+
+        //Get all the KWH Usage in one array
+        foreach($usage_data as $u){
+            array_push($all_kwh_usage, $u['kwh_usage']);
+        }
+
+        //Get Recommended blocks for this address to save to form storage
+        $recommended_blocks = get_recommended_blocks($all_kwh_usage);
+        _subsolar_form_session('rec_blocks', $recommended_blocks);
+
+        //Get max blocks for this address to save to form storage
+        $max_blocks = get_max_blocks($all_kwh_usage);
+        _subsolar_form_session('max_blocks', $max_blocks);
+
+        //Save selected address in form session
+        _subsolar_form_session('address', $usage_data[0]['user_address']);
+        _subsolar_form_session('site_id', $usage_data[0]['site_id']);
+        _subsolar_form_session('service_location_seq', $usage_data[0]['service_location_seq']);
+
+        //Save some stuff in Drupal settings to access outside of AJAX
+        drupal_add_js(array('usage_data' => $usage_data), 'setting');
+        drupal_add_js(array('recommended_blocks' => $recommended_blocks), 'setting');
+
+        //Send usage data and recommended block number for the selected address to subsolar_form.js
+        $commands = array();
+        $commands [] = array (
+            'command' => 'calculateOnAddressSelect',
+            'usage_data' => $usage_data,
+            'recommended_blocks' =>  $recommended_blocks,
+        );
+        return array('#type' => 'ajax', '#commands' => $commands);
+    }
+}
+
+//AJAX callback function to update the usage table when there's new data
+function block_slider_change_ajax_form_callback($form, $form_state) {
+    $commands = array();
+    $commands [] = array (
+      'command' => 'batchSlideCalculator',
+      'usage_data' => $_SESSION['data_by_adr'],
+      'solarBlocks_number' =>  $form_state['values']['step_3']['block_slider'],
+    );
+    return array('#type' => 'ajax', '#commands' => $commands);
+}
+
+/**
+ * Implements hook_mail_alter().
+ */
+function subsolar_form_mail_alter(&$message){
+    if ($message['module'] == 'webform' && theme_get_setting('waitlist_settings') == 'enabled') {
+        $message['subject'] = 'Subscriber Solar Waitlist Confirmation';
+        $message['body'] = '<h2>Thank you!</h2><p>Thank you for your interest in the Rocky Mountain Power Subscriber Solar program. While the program is currently full, we have received your reservation request and added you to our waitlist. We will contact you when blocks are available.</p><p>Thank you again for your interest in the Subscriber Solar program!</p>';
+    }
+}

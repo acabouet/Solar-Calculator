@@ -1,0 +1,5 @@
+name = Sub-Solar Multi-Step Form
+description = A multi-step form for the Sub-Solar app.
+core = 7.x
+package = "TNG"
+dependencies[] = subsolar_entity
