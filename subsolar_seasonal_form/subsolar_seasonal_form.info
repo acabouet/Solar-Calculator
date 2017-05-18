@@ -1,0 +1,6 @@
+name = Sub-Solar Seasonal Multi-Step Form
+description = A multi-step form for residential customers who do not have account numbers with manual entry for usage.
+core = 7.x
+package = "TNG"
+dependencies[] = subsolar_form
+dependencies[] = subsolar_entity
