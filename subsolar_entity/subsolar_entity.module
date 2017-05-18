@@ -1,0 +1,727 @@
+<?php
+/**
+ * @FILE Primary module file containing core hooks.
+ */
+
+// 50 items per page.
+define('TOTAL_ITEMS_PER_PAGE', 50);
+
+// Admin uri links.
+define('ADMIN_CONTENT_RES_SOLAR_SIGNUPS_MANAGE_URI', 'admin/subsolar/res-signups/manage/');
+define('ADMIN_CONTENT_RES_SOLAR_SIGNUPS_URI', 'admin/subsolar/res-signups');
+
+/**
+ * Implements hook_entity_info().
+ */
+function subsolar_entity_entity_info() {
+
+    $info = array();
+
+    $info['res_solar_signup'] = array(
+        'label' => t('Residential Solar Sign Up'),
+        'label_callback' =>'res_solar_signup_label_callback',
+        'base table' => 'res_solar_signups',
+        'entity keys' => array(
+            'id' => 'id',
+            'label' => 'customer_name',
+        ),
+        'entity class' => 'SubSolarEntity',
+        'controller class' => 'SubSolarEntityController',
+        'module' => 'subsolar_entity',
+        'access callback' => 'subsolar_entity_access_callback',
+        'uri callback' => 'entity_class_uri',
+        'admin ui' => array(
+            'path' => 'admin/subsolar/res-signups',
+            'controller class' => 'SubSolarEntityUIController',
+        ),
+        'fieldable' => TRUE,
+        'bundles' => array(
+            'res_solar_signup' => array(
+                'label' => t('Residential Solar Sign Up'),
+                'admin' => array(
+                    'path' => 'admin/subsolar/res-signups/manage',
+                    'access arguments' => array('administer subsolar entities'),
+                ),
+            ),
+        ),
+        'views controller class' => 'EntityDefaultViewsController',
+
+    );
+
+    return $info;
+}
+
+/**
+ * Implements hook_menu()
+ */
+function subsolar_entity_menu() {
+    $items = array();
+
+
+    $items['res-signups/%res_solar_signup'] = array(
+        'title' => 'Residential Solar Sign Up',
+        'page callback' => 'res_solar_signup_view_entity',
+        'page arguments' => array(1),
+        'access callback' => 'subsolar_entity_access_menu_callback',
+        'access arguments' => array('view', 1),
+    );
+
+    $items['res-signups/locate'] = array(
+        'page callback' => 'res_solar_signup_locate_callback',
+        'access arguments' => array('access content'),
+    );
+
+    $items['admin/subsolar/res-signups/bulk/delete/%'] = array(
+        'title' => 'Bulk Delete Residential Solar Sign Ups',
+        'page callback' => 'drupal_get_form',
+        'page arguments' => array('res_solar_signup_bulk_delete', 5),
+        'access arguments' => array('administer subsolar entities'),
+    );
+
+    $items['admin/subsolar/res-signups/content'] = array(
+        'title' => 'View All Residential Sign Ups',
+        'access arguments' => array('administer subsolar entities'),
+        'type' => MENU_NORMAL_ITEM,
+    );
+
+    return $items;
+}
+
+/**
+ * Help function api data.
+ */
+function res_solar_signup_locate_callback() {
+    $params = drupal_get_query_parameters();
+
+    if (isset($params['customer_name'])) {
+        $conditions = $params['customer_name'];
+        $result = res_solar_signup_entity_query($conditions);
+        $data = res_solar_signup_load_multiple($result);
+        drupal_json_output($data);
+    }
+    elseif (isset($params['phone_number']) && isset($params['account_number'])) {
+        $account_number = array('account_number' => $params['account_number']);
+        $phone_number = array('phone_number' => $params['phone_number']);
+        $conditions = array_merge($phone_number, $account_number);
+        $result = res_solar_signup_entity_query($conditions);
+        $data = res_solar_signup_load_multiple($result);
+        drupal_json_output($data);
+    }
+
+}
+
+/**
+ * Implements hook_permission().
+ */
+function subsolar_entity_permission() {
+    return array(
+        'administer subsolar entities' => array(
+            'title' => t('Administer Subsolar Entities'),
+            'description' => t('Allows a user to administer subsolar entities'),
+        ),
+        'view subsolar entities' => array(
+            'title' => t('View Subsolar Entity'),
+            'description' => t('Allows a user to view the subsolar entities.'),
+        ),
+        'create subsolar entities' => array(
+            'title' => t('Create Subsolar Entities'),
+            'description' => t('Allows a user to create subsolar entities.'),
+        ),
+        'edit subsolar entities' => array(
+            'title' => t('Edit Subsolar Entities'),
+            'description' => t('Allows a user to edit subsolar entities.'),
+        ),
+        'delete subsolar entities' => array(
+            'title' => t('Delete Subsolar Entities'),
+            'description' => t('Allows a user to delete subsolar entities.'),
+        ),
+        'use subsolar bulk operations' => array(
+            'title' => t('Do bulk operations on Subsolar entities'),
+            'description' => t('Allows a user to do bulk operations.'),
+        ),
+    );
+}
+
+/**
+ * Check access permission for res_solar_signups Entity UI.
+ */
+function subsolar_entity_access_menu_callback($op, $signups = NULL, $account = NULL) {
+    switch ($op) {
+        case 'view':
+            return user_access('view subsolar entities', $account);
+
+        case 'create':
+            return user_access('create subsolar entities', $account);
+
+        case 'update':
+            return user_access('edit subsolar entities', $account);
+
+        case 'delete':
+            return user_access('delete subsolar entities', $account);
+    }
+
+    return FALSE;
+}
+
+/**
+ * Access callback for res_solar_signup entities.
+ */
+function subsolar_entity_access_callback($op, $signups = NULL, $account = NULL) {
+    if (user_is_anonymous() && !user_access('administer subsolar entities')) {
+        return FALSE;
+    }
+    else {
+        return TRUE;
+    }
+}
+
+
+/**
+ * Helper function for custom queries.
+ */
+function res_solar_signup_entity_query($conditions = array()) {
+
+    $query = new EntityFieldQuery();
+    $query->entityCondition('entity_type', 'res_solar_signup');
+
+    // Apply conditions.
+    foreach ($conditions as $key => $value) {
+        $query->propertyCondition($key, $value);
+    }
+
+    $result = $query->execute();
+
+    if (isset($result['res_solar_signup'])) {
+        $signups = array_keys($result['res_solar_signup']);
+    }
+    else {
+        $signups = array();
+    }
+
+    return $signups;
+}
+
+/**
+ * Label callback for res_solar_signups entities, for menu router, etc.
+ */
+function res_solar_signup_label_callback($signups, $type) {
+    return empty($signups->customer_name) ? 'Untitled Residential Solar Sign Up' : $signups->customer_name;
+}
+
+
+/**
+ * Callback function for displaying individual solar sign ups
+ */
+function res_solar_signup_view_entity($signup) {
+    $customer_name = $signup->customer_name;
+    drupal_set_title($customer_name );
+    $output = entity_view('res_solar_signup', array($signup));
+    return $output;
+}
+
+
+/**
+ * Menu autoloader for /res_solar_signup.
+ */
+function res_solar_signup_load($id, $reset = FALSE) {
+    $signups = res_solar_signup_load_multiple(array($id), array(), $reset);
+    return reset($signups);
+}
+
+/**
+ * Load multiple res_solar_signups based on certain conditions.
+ */
+function res_solar_signup_load_multiple($ids = array(), $conditions = array(), $reset = FALSE) {
+    return entity_load('res_solar_signup', $ids, $conditions, $reset);
+}
+
+/**
+ * Deletes a res_solar_signup.
+ */
+function res_solar_signup_delete(SubSolarEntity $signups) {
+    $signups->delete();
+}
+
+/**
+ * Delete multiple res_solar_signup.
+ */
+function res_solar_signup_delete_multiple($ids) {
+    entity_delete_multiple('res_solar_signup', $ids);
+}
+
+/**
+ * Form definition for adding / editing a Res Solar Signup.
+ */
+function res_solar_signup_form($form, &$form_state, $signup = NULL) {
+
+    $form['account_number'] = array(
+        '#title' => t('Residential Solar Account Number'),
+        '#type' => 'textfield',
+        '#default_value' => isset($signup->account_number) ? $signup->account_number : '',
+        '#required' => TRUE,
+    );
+
+    $form['customer_name'] = array(
+        '#title' => t('Customer Name'),
+        '#type' => 'textfield',
+        '#default_value' => isset($signup->customer_name) ? $signup->customer_name : '',
+        '#required' => TRUE,
+    );
+
+    $form['phone_number'] = array(
+        '#title' => t('Phone Number'),
+        '#type' => 'telfield',
+        '#default_value' => isset($signup->phone_number) ? $signup->phone_number : '',
+        '#required' => TRUE,
+    );
+
+    $form['alt_phone_number'] = array(
+        '#title' => t('Alternate Phone Number'),
+        '#type' => 'telfield',
+        '#default_value' => isset($signup->alt_phone_number) ? $signup->alt_phone_number : '',
+        '#required' => FALSE,
+    );
+
+
+    $form['email'] = array(
+        '#type' => 'emailfield',
+        '#title' => t('Email Address'),
+        '#required' => FALSE,
+        '#default_value' => isset($signup->email) ? $signup->email : '',
+    );
+
+    $form['street_address'] = array(
+        '#type' => 'textfield',
+        '#title' => t('Service Address'),
+        '#required' => TRUE,
+        '#default_value' => isset($signup->street_address) ? $signup->street_address : '',
+    );
+
+
+    $form['request_status'] = array(
+        '#title' => t('Request Status'),
+        '#type' => 'textfield',
+        '#default_value' => isset($signup->request_status) ? $signup->request_status : '',
+        '#required' => TRUE,
+    );
+
+    field_attach_form('res_solar_signup', $signup, $form, $form_state);
+
+
+    $form['submit'] = array(
+        '#type' => 'submit',
+        '#value' => isset($signup->id) ? t('Update Residential Solar Sign Up') : t('Save Residential Solar Sign Up'),
+        '#weight' => 50,
+    );
+
+    return $form;
+}
+
+/**
+ * Submit handler for the Res Solar Signup add/edit form.
+ */
+function res_solar_signup_form_submit($form, &$form_state) {
+    $signup = entity_ui_form_submit_build_entity($form, $form_state);
+    $signup->save();
+    drupal_set_message(t('The Residential Solar Signup for: @name has been saved.', array('@name' => $signup->customer_name)));
+    $form_state['redirect'] = 'res-signups/' . $signup->id;
+}
+
+/**
+ * Form API submit callback for the delete button.
+ */
+function res_solar_signup_form_submit_delete(&$form, &$form_state) {
+
+    $form_state['redirect'] = 'admin/subsolar/res-signups/manage/' . $form_state['res_solar_signup']->type . '/delete';
+}
+
+/**
+ * Confirmation before bulk deleting residential solar signups.
+ */
+function res_solar_signup_bulk_delete($form, &$form_state, $ids) {
+    $ids = explode('|', $ids);
+    $signups = res_solar_signup_load_multiple($ids);
+    $form = array();
+    $form_state['ids'] = $ids;
+    $variables = array(
+        'type' => 'ul',
+        'items' => array(),
+        'title' => '',
+        'attributes' => array(),
+    );
+    foreach ($signups as $signup) {
+        $variables['items'][] = $signup->customer_name;
+    }
+    $form['summary'] = array(
+        '#markup' => theme_item_list($variables),
+    );
+    return confirm_form($form, t('Delete all Residential Solar Sign Ups?'), 'admin/subsolar/res-signups/bulk/delete/', t(''), t('Delete all'), t('Cancel'));
+}
+/**
+ * Implements hook_submit().
+ */
+function res_solar_signup_bulk_delete_submit($form, &$form_state) {
+    $ids = $form_state['ids'];
+    res_solar_signup_delete_multiple($ids);
+    drupal_set_message(t('The selected Residential Solar Signups were deleted'));
+    drupal_goto('admin/subsolar/res-signups');
+}
+
+/**
+ * Implements hook_entity_property_info().
+ */
+function subsolar_entity_entity_property_info() {
+
+    $info = array();
+
+    $info['res_solar_signup']['properties']['id'] = array(
+        'label' => t('Residential Solar Sign Up ID'),
+        'description' => t('The ID of the Residential Solar Sign Up.'),
+        'type' => 'integer',
+        'schema field' => 'id',
+    );
+
+    $info['res_solar_signup']['properties']['account_number'] = array(
+        'label' => t('Residential Account Number'),
+        'description' => t('Account Number for this residential customer'),
+        'type' => 'text',
+        'schema field' => 'account_number',
+    );
+
+    $info['res_solar_signup']['properties']['customer_name'] = array(
+        'label' => t('Residential Customer Name'),
+        'description' => t('Name of the Residential Customer'),
+        'type' => 'text',
+        'schema field' => 'customer_name',
+    );
+
+    $info['res_solar_signup']['properties']['phone_number'] = array(
+        'label' => t('Phone Number'),
+        'description' => t('Phone number for this customer'),
+        'type' => 'text',
+        'schema field' => 'phone_number',
+    );
+
+    $info['res_solar_signup']['properties']['alt_phone_number'] = array(
+        'label' => t('Alternate Phone Number'),
+        'description' => t('Alternate phone number for this customer'),
+        'type' => 'text',
+        'schema field' => 'alt_phone_number',
+    );
+
+    $info['res_solar_signup']['properties']['email'] = array(
+        'label' => t('Customer email'),
+        'description' => t('Customer Email'),
+        'type' => 'text',
+        'schema field' => 'email',
+    );
+
+    $info['res_solar_signup']['properties']['street_address'] = array(
+        'label' => t('Service Address'),
+        'description' => t('Customer Service Address'),
+        'type' => 'text',
+        'schema field' => 'street_address',
+    );
+    $info['res_solar_signup']['properties']['request_status'] = array(
+        'label' => t('Blocks Reserved'),
+        'description' => t('How many solar blocks this customer has requested.'),
+        'type' => 'integer',
+        'schema field' => 'request_status',
+    );
+
+    return $info;
+}
+
+function subsolar_entity_entity_property_info_alter(&$info) {
+    $properties = &$info['res_solar_signup']['properties'];
+    $properties['created'] = array(
+        'label' => t("Date created"),
+        'type' => 'date',
+        'description' => t("The date the solar sign up was submitted."),
+        'setter callback' => 'entity_property_verbatim_set',
+        'setter permission' => 'administer nodes',
+        'schema field' => 'created',
+    );
+    $properties['changed'] = array(
+        'label' => t("Date changed"),
+        'type' => 'date',
+        'schema field' => 'changed',
+        'description' => t("The date the entity was most recently updated."),
+    );
+}
+
+
+
+/**
+ * Extending the EntityAPIController for the SubSolar entity.
+ */
+class SubSolarEntityController extends EntityAPIController {
+
+    public function create(array $values = array()) {
+        $values += array(
+            'title' => '',
+            'description' => '',
+            'created' => REQUEST_TIME,
+            'changed' => REQUEST_TIME,
+        );
+        return parent::create($values);
+    }
+
+    public function buildContent($entity, $view_mode = 'full', $langcode = NULL, $content = array()) {
+
+        $build = parent::buildContent($entity, $view_mode, $langcode, $content);
+
+        // Our additions to the $build render array.
+        $build['account_number'] = array(
+            '#type' => 'markup',
+            '#markup' => check_plain($entity->account_number),
+            '#prefix' => '<p class="account-number">',
+            '#suffix' => '</p>',
+        );
+        $build['customer_name'] = array(
+            '#type' => 'markup',
+            '#markup' => check_plain($entity->customer_name),
+            '#prefix' => '<p class="customer-name">',
+            '#suffix' => '</p>',
+        );
+        $build['phone_number'] = array(
+            '#type' => 'markup',
+            '#markup' => check_plain($entity->phone_number),
+            '#prefix' => '<p class="phone">',
+            '#suffix' => '</p>',
+        );
+        $build['alt_phone_number'] = array(
+            '#type' => 'markup',
+            '#markup' => check_plain($entity->alt_phone_number),
+            '#prefix' => '<p class="alt-phone">',
+            '#suffix' => '</p>',
+        );
+        $build['email'] = array(
+            '#type' => 'markup',
+            '#markup' => check_plain($entity->email),
+            '#prefix' => '<p class="emaill">',
+            '#suffix' => '</p>',
+        );
+        $build['street_address'] = array(
+            '#type' => 'markup',
+            '#markup' => check_plain($entity->street_address),
+            '#prefix' => '<p class="address">',
+            '#suffix' => '</p>',
+        );
+        $build['request_status'] = array(
+            '#type' => 'markup',
+            '#markup' => check_plain($entity->request_status),
+            '#prefix' => '<span class="request-status">',
+            '#suffix' => '</span>',
+        );
+
+
+        return $build;
+
+    }
+
+    /**
+     * Override the save method.
+     */
+
+    public function save($entity, DatabaseTransaction $transaction = NULL) {
+        if (isset($entity->is_new)) {
+            $entity->created = REQUEST_TIME;
+        }
+        $entity->changed = REQUEST_TIME;
+        return parent::save($entity, $transaction);
+    }
+
+}
+
+/**
+ * Custom controller for the administrator UI.
+ */
+class SubSolarEntityUIController extends EntityDefaultUIController
+{
+
+    /**
+     * Override the menu hook for default ui controller.
+     */
+    public function hook_menu()
+    {
+        $items = parent::hook_menu();
+        $items[$this->path]['title'] = t('Residential Solar Sign Ups');
+        $items[$this->path]['description'] = t('Manage Residential Solar Sign Ups, including fields.');
+        $items[$this->path]['access callback'] = 'subsolar_entity_access_callback';
+        $items[$this->path]['access arguments'] = array('administer subsolar entities');
+        $items[$this->path]['type'] = MENU_LOCAL_TASK;
+
+        $items[$this->path . '/add'] = array(
+            'title' => t('Add a New Residential Solar Sign Up'),
+            'title arguments' => array('add', $this->entityType),
+            'page callback' => 'entity_ui_get_form',
+            'page arguments' => array($this->entityType, NULL, 'add'),
+            'access callback' => 'entity_access',
+            'access arguments' => array('create', $this->entityType),
+            'type' => MENU_LOCAL_ACTION,
+        );
+        return $items;
+    }
+
+    /**
+     * Admin form for searching and doing bulk operations.
+     */
+    public function overviewForm($form, &$form_state)
+    {
+        $form['pager'] = array('#theme' => 'pager');
+
+        $header = array(
+            'id' => array('data' => t('ID'), 'field' => 'id'),
+            'customer_name' => array('data' => t('Customer Name'), 'field' => 'customer_name'),
+            'phone_number' => array('data' => t('Phone Number'), 'field' => 'phone_number'),
+            'site_id' => array('data' => t('Site ID'), 'field' => 'site_id'),
+            'waitlist_enabled' => array('data' => t('Waitlist Status'), 'field' => 'waitlist_enabled'),
+            'operations' => array('data' => t('Operations'), 'field' => 'operations'),
+        );
+
+        $options = array();
+        $search_term = !empty($_GET['search']) ? $_GET['search'] : NULL;
+
+        $query = new EntityFieldQuery();
+        $query
+            ->entityCondition('entity_type', 'res_solar_signup');
+
+        if (!empty($search_term)) {
+            $query->fieldCondition('field_site_id', 'value', $search_term , 'CONTAINS');
+        }
+        // Check for sort order and sort key.
+        if (!empty($_GET['sort']) && !empty($_GET['order'])) {
+            $sort = strtoupper($_GET['sort']);
+            $order = strtolower($_GET['order']);
+            $order = str_replace(' ', '_', $order);
+            if ($order != 'operations' && $order !='site_id' && $order != 'waitlist_status') {
+                $query->propertyOrderBy($order, $sort);
+            } elseif($order =='site_id'){
+                $query->fieldOrderBy('field_site_id', 'value', $sort);
+            } elseif($order == 'waitlist_enabled') {
+                $query->fieldOrderBy('field_waitlist_enabled', 'value', $sort);
+            }
+        }
+
+        $query->pager(TOTAL_ITEMS_PER_PAGE);
+
+        $result = $query->execute();
+        $res_solar_signup_results = !empty($result['res_solar_signup']) ? $result['res_solar_signup'] : array();
+        $res_solar_signup_array = !empty($res_solar_signup_results) ? res_solar_signup_load_multiple(array_keys($res_solar_signup_results)) : array();
+        foreach ($res_solar_signup_array as $id => $signup) {
+            $options['id-' . $id] = array(
+                'id' => l($signup->id, 'res-signups/' . $signup->id),
+                'customer_name' => l($signup->customer_name, 'res-signups/' . $signup->id),
+                'phone_number' => l($signup->phone_number, 'res-signups/' . $signup->id),
+                'site_id' => l($signup->field_site_id['und'][0]['value'], 'res-signups/' . $signup->id),
+                'waitlist_enabled' => l($signup->field_waitlist_enabled['und'][0]['value'], 'res-signups/' . $signup->id),
+                'operations' =>
+                    l(t('View'), 'res-signups/' . $signup->id) . ' ' .
+                    l(t('Edit'), ADMIN_CONTENT_RES_SOLAR_SIGNUPS_MANAGE_URI . $id, array('query' => array('destination' => ADMIN_CONTENT_RES_SOLAR_SIGNUPS_URI))) . ' ' .
+                    l(t('Delete'), ADMIN_CONTENT_RES_SOLAR_SIGNUPS_MANAGE_URI . $id . '/delete', array('attributes' => array('class' => array('res_solar_signup-delete-' . $signup->id),), 'query' => array('destination' => ADMIN_CONTENT_RES_SOLAR_SIGNUPS_URI))),
+            );
+        }
+
+        $form['search'] = array(
+            '#type' => 'fieldset',
+            '#title' => t('Search Residential Solar Sign Ups'),
+            '#collapsible' => FALSE,
+        );
+
+        $form['search']['search_text'] = array(
+            '#type' => 'textfield',
+            '#title' => t('Search by Site ID'),
+            '#description' => t('Search for a whole Site ID or just a portion of one'),
+            '#default_value' => !empty($search_term) ? $search_term : '',
+        );
+
+        $form['search']['search_submit'] = array(
+            '#type' => 'submit',
+            '#value' => t('Search'),
+        );
+
+        $form['search']['search_reset'] = array(
+            '#type' => 'submit',
+            '#value' => t('Reset'),
+        );
+
+        $form['bulk_operations'] = array(
+            '#type' => 'fieldset',
+            '#title' => t('Bulk Operations'),
+            '#collapsible' => TRUE,
+            '#collapsed' => TRUE,
+        );
+
+        $form['bulk_operations']['operations'] = array(
+            '#type' => 'select',
+            '#options' => array(
+                0 => t('Select a bulk operation'),
+                'delete' => t('Delete Selected Residential Solar Sign Ups'),
+            ),
+        );
+
+        $form['bulk_operations']['submit'] = array(
+            '#type' => 'submit',
+            '#value' => t('Submit'),
+        );
+
+        $form['entities'] = array(
+            '#type' => 'tableselect',
+            '#header' => $header,
+            '#options' => $options,
+            '#attributes' => array('class' => array('entity-sort-table')),
+            '#empty' => t('There are currently no Residential Solar Sign Ups.'),
+        );
+
+        return $form;
+    }
+
+    /**
+     * Form Submit method.
+     */
+    public function overviewFormSubmit($form, &$form_state){
+
+        $values = $form_state['input'];
+        $ids = array();
+
+        if (!empty($values['entities'])) {
+            foreach ($values['entities'] as $index => $value) {
+                if (!empty($value)) {
+                    $ids[] = str_replace('id-', '', $value);
+                }
+            }
+
+            switch ($values['operations']) {
+                case 'delete':
+                    drupal_goto('admin/subsolar/res-signups/bulk/delete/' . implode('|', $ids));
+                    break;
+            }
+        }
+
+        if($form_state['values']['op'] == $form_state['values']['search_reset']){
+            $form_state['values']['search_text'] = null;
+            $form_state['rebuild'] = TRUE;
+            drupal_goto('admin/subsolar/res-signups');
+        }
+
+        if (!empty($values['search_text'])) {
+            drupal_goto('admin/subsolar/res-signups', array('query' => array('search' => $values['search_text'])));
+        }
+
+    }
+}
+
+/**
+ * SubSolar entity class extending the Entity class
+ */
+class SubSolarEntity extends Entity {
+
+    /**
+     * Change the default URI from default/id to res-signup/id
+     */
+    protected function defaultUri() {
+        return array('path' => 'res-signups/' . $this->identifier());
+    }
+
+}

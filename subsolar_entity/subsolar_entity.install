@@ -1,0 +1,104 @@
+<?php
+/**
+ * @file
+ * Install & uninstall functions for subsolar_entity module.
+ */
+
+
+/**
+* Implements hook_schema().
+*/
+function subsolar_entity_schema() {
+
+    $schema = array();
+
+    $schema['res_solar_signups'] = array(
+        'description' => 'The base table for the  entity',
+        'fields' => array(
+            'id' => array(
+                'description' => 'Primary key of the Res Solar Sign Up entity',
+                'type' => 'serial',
+                'unsigned' => TRUE,
+                'not null' => TRUE,
+            ),
+            'account_number' => array(
+                'description' => 'Account Number',
+                'type' => 'varchar',
+                'length' => 255,
+                'not null' => FALSE,
+            ),
+            'customer_name' => array(
+                'description' => 'Customer Name',
+                'type' => 'varchar',
+                'length' => 255,
+                'not null' => FALSE,
+            ),
+            'phone_number' => array(
+                'description' => 'Phone number',
+                'type' => 'varchar',
+                'length' => 31,
+                'not null' => TRUE,
+                'default' => '',
+            ),
+            'alt_phone_number' => array(
+                'description' => 'Alternate Phone number',
+                'type' => 'varchar',
+                'length' => 31,
+                'not null' => TRUE,
+                'default' => '',
+            ),
+            'email' => array(
+                'description' => 'Email Address',
+                'type' => 'varchar',
+                'length' => 255,
+                'not null' => FALSE,
+            ),
+            'street_address' => array(
+                'description' => 'Street Address',
+                'type' => 'varchar',
+                'length' => 255,
+                'not null' => FALSE,
+            ),
+            'request_status' => array(
+                'description' => 'Blocks Reserved',
+                'type' => 'int',
+                'length' => 6,
+                'not null' => FALSE,
+            ),
+            'created' => array(
+                'description' => 'Created timestamp',
+                'type' => 'int',
+                'not null' => FALSE,
+            ),
+            'changed' => array(
+                'description' => 'Changed timestamp',
+                'type' => 'int',
+                'not null' => FALSE,
+            ),
+        ),
+        'primary key' => array('id'),
+    );
+
+    return $schema;
+}
+
+
+/**
+ * Add created and changed fields to {res_solar_signups} table.
+ */
+function subsolar_entity_update_7100() {
+    $created = array(
+        'description' => 'Created timestamp',
+        'type' => 'int',
+        'not null' => FALSE,
+    );
+
+    $changed = array(
+        'description' => 'Changed timestamp',
+        'type' => 'int',
+        'not null' => FALSE,
+    );
+
+    db_add_field( 'res_solar_signups', 'created', $created);
+    db_add_field( 'res_solar_signups', 'changed', $changed);
+}

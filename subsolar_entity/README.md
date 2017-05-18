@@ -1,0 +1,1 @@
+This module creates a custom entity type to store users submissions to the Sub Solar residential sign up form

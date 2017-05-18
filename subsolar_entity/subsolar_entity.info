@@ -1,0 +1,5 @@
+name = Sub-Solar Entity
+description = This module creates a custom entity type to store users submissions to the Sub Solar residential sign up form
+core = 7.x
+package = "TNG"
+dependencies[] = entity
