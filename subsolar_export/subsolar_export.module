@@ -1,0 +1,164 @@
+<?php
+/**
+ * @FILE Primary module file containing core hooks.
+ */
+
+
+function subsolar_export_webform($node, $f_name){
+    module_load_include('inc', 'webform', 'includes/webform.export');
+    module_load_include('inc', 'webform', 'includes/webform.components');
+    module_load_include('inc', 'webform', 'includes/webform.submissions');
+    module_load_include('inc', 'webform', 'includes/webform.report');
+
+    $format = 'excel';
+
+    $file_name = _webform_export_tempname();
+
+    $submission_information = webform_results_download_submission_information($node);
+
+    $options = array(
+        'components' => array_merge(array_keys($submission_information), array_keys(webform_component_list($node, 'csv', TRUE))),
+        'header_keys' => 0,
+        'select_keys' => 0,
+        'select_format' => 'separate',
+        'range' => array(
+            'range_type' => 'new',
+            'completion_type' => 'finished',
+        ),
+        'download' => TRUE
+    );
+
+    $options['file_name'] = $file_name;
+
+    $exporter = new webform_exporter_excel_xlsx($options);
+
+    $exporter_information = webform_export_fetch_definition($format);
+    if (isset($exporter_information['options'])) {
+        $options = array_merge($options, $exporter_information['options']);
+    }
+
+    //write the opening byte
+    $handle = @fopen($options['file_name'], 'w'); // The @ suppresses errors.
+    if (!$handle) {
+        return;
+    }
+    $exporter->bof($handle);
+    @fclose($handle);
+
+    // Add headers to the file.
+    $handle = fopen($options['file_name'], 'a');
+    $headers = webform_results_download_headers($node, $options);
+    $row_count = 0;
+    $col_count = 0;
+
+    foreach ($headers as $row) {
+        // Output header if header_keys is non-negative. -1 means no headers.
+        if ($options['header_keys'] >= 0) {
+            $exporter->add_row($handle, $row, $row_count);
+            $row_count++;
+        }
+        $col_count = count($row) > $col_count ? count($row) : $col_count;
+    }
+
+    //Add webform submissions to the file
+    $query = webform_download_sids_query($node->nid, $options['range']);
+
+    // Join to the users table to include user name in results, as required by
+    // webform_results_download_rows_process.
+    $query->leftJoin('users', 'u', 'u.uid = ws.uid');
+    $query->fields('u', array('name'));
+    $query->fields('ws');
+
+    $submissions = webform_get_submissions_load($query);
+
+    $rows = webform_results_download_rows_process($node, $options, 0, $submissions);
+
+    $handle = fopen($options['file_name'], 'a');
+    foreach ($rows as $row) {
+        $exporter->add_row($handle, $row, $row_count);
+        $row_count++;
+    }
+
+    $last_sid = end($submissions) ? key($submissions) : NULL;
+    @fclose($handle);
+
+
+    // Add the closing bytes.
+    $handle = fopen($options['file_name'], 'r+');
+    fseek($handle, 0, SEEK_END);
+    $exporter->eof($handle, $row_count, $col_count);
+    @fclose($handle);
+
+
+    $export_info['format'] = $format;
+    $export_info['options'] = $options;
+    $export_info['file_name'] = $options['file_name'];
+    $export_info['row_count'] = $row_count;
+    $export_info['col_count'] = $col_count;
+    $export_info['last_sid'] = $last_sid;
+
+
+    $results = array(
+        'node' => $node,
+        'file_name' => $options['file_name']
+    );
+
+    $exporter->post_process($results);
+    $exporter->set_headers($results['file_name']);
+    $export_info['exporter'] = $exporter;
+
+    $handle = fopen($results['file_name'], "r");
+    $contents = fread($handle, filesize($results['file_name']));
+
+    file_unmanaged_save_data($contents,'public://form_submissions/'.$f_name, FILE_EXISTS_REPLACE);
+    @fclose($handle);
+
+    webform_results_export_success($node, $export_info);
+}
+
+//Implements hook_cronapi from elysia_cron
+function subsolar_export_cronapi($op, $job = null){
+
+    //export residential subsolar form submissions
+    $items['subsolar_export_res_daily_cron'] = array(
+        'description' => 'Export submissions from the residential solar sign up form daily',
+        'rule' => '0 7 * * *'
+    );
+
+    //export commercial form submissions
+    $items['subsolar_export_comm_daily_cron'] = array(
+        'description' => 'Export submissions from the commercial (webform) solar sign up form daily',
+        'rule' => '0 7 * * *'
+    );
+
+    //export waitlist form submissions
+    $items['subsolar_export_waitlist_daily_cron'] = array(
+        'description' => 'Export submissions from the waitlist (webform) solar sign up form daily',
+        'rule' => '0 7 * * *'
+    );
+
+  return $items;
+}
+
+function subsolar_export_res_daily_cron(){
+    $view = views_get_view('residential_sign_ups');
+    $display = $view->preview('res_signup_daily_export');
+    $f_name ='res_solar_export'.date('m-d-Y').'.csv';
+    file_unmanaged_save_data($display,'public://form_submissions/'.$f_name, FILE_EXISTS_REPLACE);
+}
+
+function subsolar_export_comm_daily_cron(){
+    //exports from commercial webform
+    $node = node_load(4);
+    $f_name ='comm_solar_export'.date('m-d-Y').'.xlsx';
+
+    subsolar_export_webform($node, $f_name);
+}
+
+function subsolar_export_waitlist_daily_cron(){
+    //exports from waitlist webform
+    $node = node_load(6);
+    $f_name ='waitlist_solar_export'.date('m-d-Y').'.xlsx';
+
+    subsolar_export_webform($node, $f_name);
+}
